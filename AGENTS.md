@@ -12,8 +12,11 @@ A **Vue 3** single-page application built with **Vite** and written in **TypeScr
 | Build tool      | Vite 8                                                |
 | Language        | TypeScript (strict mode)                              |
 | Styling         | Tailwind CSS v4 (`@tailwindcss/vite` plugin)          |
+| Typography      | `@tailwindcss/typography` (Lora & Merriweather fonts) |
 | UI components   | shadcn-vue (style: `new-york`, base color: `neutral`) |
 | Icons           | lucide-vue-next                                       |
+| Search Engine   | fuse.js (fuzzy client-side searching)                 |
+| Utility Hooks   | `@vueuse/core` (dark mode toggle)                     |
 | Package manager | Bun                                                   |
 
 ## Project Structure
@@ -45,6 +48,10 @@ parallel-translator/
 | `@/components/ui` | `src/components/ui` (shadcn-vue components) |
 | `@/lib`           | `src/lib`                                   |
 | `@/composables`   | `src/composables`                           |
+
+## Architecture Rules
+
+- **Prefer External Tools:** ALWAYS prefer to use external, existing tools and packages from the marketplace or npm rather than building functionality from scratch (e.g., use an existing dropzone or PDF parser).
 
 ## Development Workflow
 
