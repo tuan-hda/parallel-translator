@@ -109,7 +109,7 @@ const onUpdateSearchQuery = (val: string | number) => {
                     <ul class="space-y-4 mt-3">
                       <li v-for="(def, dIdx) in meaning.definitions" :key="dIdx" class="text-sm md:text-base group flex flex-col">
                         <div class="flex gap-3">
-                          <span class="text-neutral-300 dark:text-neutral-600 font-sans text-xs mt-1 min-w-[1.25rem]">{{ dIdx + 1 }}.</span>
+                          <span class="text-neutral-300 dark:text-neutral-600 font-sans text-xs mt-1 min-w-[1.25rem]">{{ Number(dIdx) + 1 }}.</span>
                           <span class="text-neutral-800 dark:text-neutral-200 leading-relaxed">{{ def.definition }}</span>
                         </div>
                         <div v-if="def.example" class="text-neutral-500 dark:text-neutral-400 mt-2 ml-8 pl-3 border-l-[3px] border-neutral-200 dark:border-neutral-800 italic leading-relaxed text-sm">
