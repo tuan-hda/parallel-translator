@@ -1,16 +1,15 @@
 # Active Context
 
 ## Current State
-The foundational UI and local document processing features are complete. We have successfully transitioned the app from a generic landing page to a highly specialized, immersive parallel reader.
-
-The PDF parsing logic works by chunking text into paragraphs. The search system dynamically splits these paragraphs further into sentences on the fly to perform `fuse.js` threshold-based fuzzy matches. 
+The app features a robust UI for parallel reading of locally parsed PDFs. 
+The Command Palette (`Cmd+K`) has been completely overhauled to feature a split-pane layout: 
+1. The left pane shows fuzzy search results (individual sentences matching the query).
+2. The right pane acts as a **"Translator Box"**. Clicking a sentence populates this box, displaying the full original context and triggering a mock API call to simulate fetching a translation.
 
 ## Recent Changes
-- Widened the text reading column significantly (`max-w-4xl` wrapper).
-- Introduced Dark Mode using `@vueuse/core`.
-- Built the `Cmd+K` fuzzy search dialog that maps sentences side-by-side.
-- Updated `AGENTS.md` to establish architectural rules regarding dependency usage (preferring established NPM packages) and documenting the updated tech stack.
+- Updated `AGENTS.md` to strictly enforce memory-bank updates.
+- Refactored `CommandDialog` inside `App.vue` to adopt a side-by-side split design.
+- Implemented a mock API response lifecycle (with loading skeleton states) for the Translator Box when a user selects a search result.
 
 ## Next Logical Steps
-- **Model / Translation API:** The most significant missing piece is the actual translation mechanism. We need to decide how the text will be translated (e.g., streaming chunks to an LLM, using a local model, or calling a third-party translation API) and plug that data into the currently blurred right-hand column placeholders.
-- **Navigation:** Connect the fuzzy search results to the main view so clicking a sentence smooth-scrolls the reader to that exact position.
+- **Model / Translation API:** Replace the mock `setTimeout` API response inside `selectSentence` with a real backend/API call to translate the text. Apply this same real translation engine to populate the right-hand column in the main reader view.

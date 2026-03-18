@@ -36,11 +36,29 @@ const dynamicStyle = computed(() => ({
 // Search Logic
 const isSearchOpen = ref(false)
 const searchQuery = ref('')
+const selectedSentence = ref<any>(null)
+const isFetchingTranslation = ref(false)
+const translatedText = ref('')
+
 const toggleSearch = () => { 
   isSearchOpen.value = !isSearchOpen.value 
   if (!isSearchOpen.value) {
     searchQuery.value = ''
+    selectedSentence.value = null
+    translatedText.value = ''
   }
+}
+
+const selectSentence = (item: any) => {
+  selectedSentence.value = item
+  isFetchingTranslation.value = true
+  translatedText.value = ''
+  
+  // Simulate an external API fetch for the specific sentence
+  setTimeout(() => {
+    translatedText.value = `[Mock API Response] Translated meaning for the sentence: "${item.text.substring(0, 30)}..."`
+    isFetchingTranslation.value = false
+  }, 1200)
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
@@ -156,43 +174,71 @@ const { getRootProps, getInputProps, isDragActive } = useDropzone({
   <div class="min-h-[100dvh] max-w-[1440px] mx-auto bg-[#FDFBF7] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-neutral-200 dark:selection:bg-neutral-800 transition-colors duration-300">
     
     <!-- Search Command Dialog -->
-    <CommandDialog v-model:open="isSearchOpen" :filter-function="customFilter" class="max-w-4xl w-[90vw] sm:w-[80vw]">
-      <CommandInput placeholder="Search for keywords or phrases..." v-model="searchQuery" />
-      <CommandList class="max-h-[70vh] overflow-y-auto">
-        <CommandEmpty v-if="searchQuery.length > 0 && searchResults.length === 0" class="py-12 text-center text-neutral-500">
-          No matches found for "<span class="font-medium text-neutral-900 dark:text-neutral-100">{{ searchQuery }}</span>"
-        </CommandEmpty>
+    <CommandDialog v-model:open="isSearchOpen" :filter-function="customFilter" class="max-w-6xl w-[95vw] sm:w-[90vw]">
+      <div class="flex flex-col md:flex-row h-full min-h-[50vh]">
         
-        <CommandGroup v-if="searchResults.length > 0" heading="Fuzzy Matches (Sentences)">
-          <CommandItem 
-            v-for="res in searchResults" 
-            :key="res.item.id" 
-            :value="res.item.id"
-            class="flex flex-col md:flex-row gap-6 p-6 border-b border-neutral-100 dark:border-neutral-800 last:border-0 items-start hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors duration-200 w-full cursor-pointer"
-          >
-            <!-- Search Result: Original Sentence -->
-            <div class="flex-1 space-y-3 w-full">
-              <div class="flex items-center justify-between">
-                <span class="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest">Original Source</span>
-              </div>
-              <p class="text-sm md:text-base text-neutral-900 dark:text-neutral-200 font-serif leading-relaxed" v-html="highlightText(res.item.text, searchQuery)"></p>
+        <!-- Left Pane: Search & List -->
+        <div class="w-full md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-800">
+          <CommandInput placeholder="Search for keywords or phrases..." v-model="searchQuery" />
+          <CommandList class="flex-1 overflow-y-auto max-h-[50vh] md:max-h-[70vh]">
+            <CommandEmpty v-if="searchQuery.length > 0 && searchResults.length === 0" class="py-12 text-center text-neutral-500">
+              No matches found for "<span class="font-medium text-neutral-900 dark:text-neutral-100">{{ searchQuery }}</span>"
+            </CommandEmpty>
+            
+            <CommandGroup v-if="searchResults.length > 0" heading="Fuzzy Matches (Sentences)">
+              <CommandItem 
+                v-for="res in searchResults" 
+                :key="res.item.id" 
+                :value="res.item.id"
+                @select="selectSentence(res.item)"
+                class="flex flex-col p-4 sm:p-5 border-b border-neutral-100 dark:border-neutral-800/50 last:border-0 items-start hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors duration-200 w-full cursor-pointer aria-selected:bg-neutral-100 dark:aria-selected:bg-neutral-800"
+              >
+                <p class="text-sm md:text-base text-neutral-900 dark:text-neutral-200 font-serif leading-relaxed line-clamp-3" v-html="highlightText(res.item.text, searchQuery)"></p>
+              </CommandItem>
+            </CommandGroup>
+          </CommandList>
+        </div>
+
+        <!-- Right Pane: Translator Box -->
+        <div class="w-full md:w-1/2 bg-neutral-50/50 dark:bg-neutral-900/30 p-6 md:p-10 overflow-y-auto max-h-[50vh] md:max-h-[70vh]">
+          <div v-if="selectedSentence" class="space-y-10">
+            <div>
+              <h3 class="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest mb-4 flex items-center gap-2">
+                <FileText class="w-3 h-3" /> Original Context
+              </h3>
+              <p class="text-base md:text-lg text-neutral-900 dark:text-neutral-100 font-serif leading-relaxed" v-html="highlightText(selectedSentence.text, searchQuery)"></p>
             </div>
             
-            <!-- Divider -->
-            <div class="hidden md:block w-px bg-neutral-200 dark:bg-neutral-800 self-stretch min-h-[4rem]"></div>
-            <div class="md:hidden h-px bg-neutral-200 dark:bg-neutral-800 w-full"></div>
+            <div class="w-full h-px bg-neutral-200 dark:bg-neutral-800"></div>
 
-            <!-- Search Result: Target Translation -->
-            <div class="flex-1 space-y-3 w-full">
-              <div class="flex items-center justify-between">
-                <span class="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest">Translation</span>
-                <span class="px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-[9px] text-neutral-500 uppercase font-medium tracking-widest">Awaiting Model</span>
+            <div>
+              <h3 class="text-[10px] font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest mb-4 flex items-center justify-between">
+                <span class="flex items-center gap-2"><Search class="w-3 h-3" /> Translation API</span>
+                <span v-if="isFetchingTranslation" class="px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-[9px] text-neutral-500 uppercase tracking-widest animate-pulse">Fetching</span>
+              </h3>
+              
+              <div v-if="isFetchingTranslation" class="flex flex-col gap-3">
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-3/4 animate-pulse"></div>
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-full animate-pulse"></div>
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
               </div>
-              <p class="text-sm md:text-base text-neutral-500 dark:text-neutral-400 font-serif leading-relaxed blur-[1.5px]">Waiting for model integration to provide the parallel translation for this sentence.</p>
+              
+              <p v-else class="text-base md:text-lg text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
+                {{ translatedText }}
+              </p>
             </div>
-          </CommandItem>
-        </CommandGroup>
-      </CommandList>
+          </div>
+          
+          <!-- Empty State for Translator Box -->
+          <div v-else class="h-full flex flex-col items-center justify-center text-center text-neutral-400 dark:text-neutral-600 space-y-4">
+            <div class="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+              <Search class="w-6 h-6 opacity-50" />
+            </div>
+            <p class="text-sm max-w-[200px] leading-relaxed">Select a search result from the left to view its full context and fetch the API translation.</p>
+          </div>
+        </div>
+
+      </div>
     </CommandDialog>
 
     <!-- Header / Nav -->
