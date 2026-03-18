@@ -10,8 +10,8 @@
   - Added a reactive draggable font-size slider.
   - Implemented Light/Dark mode toggling.
 - **Search System:** A `Cmd+K` command palette utilizing `fuse.js`. Paragraphs are dynamically chunked into sentences for granular fuzzy searching. 
-  - **Translator Box UI:** When a search result is selected, it populates a right-side pane with the original sentence context and fires a mock API request to fetch its translated meaning.
+  - **Translator Box UI:** When a search result is selected, it populates a right-side pane with the original sentence context. It extracts the first word of the search query and fetches its real meaning from `dictionaryapi.dev`, displaying a structured layout of phonetics and parts of speech.
 
 ## What is left to build
-- **Real Translation Integration:** The Translation column in the main reader and the search "Translator Box" currently render mock/placeholder responses. The actual translation mechanism (via an LLM or external API) needs to be integrated.
+- **Real Translation Integration:** The Translation column in the main reader currently renders mock/placeholder responses. The actual translation mechanism (via an LLM or external API) needs to be integrated for the full document.
 - **Search Action (Main View):** Hooking up the search results to jump the main reader view to the specific paragraph if needed.
