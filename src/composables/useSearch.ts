@@ -1,4 +1,5 @@
 import { ref, computed, type Ref } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import Fuse from 'fuse.js'
 
 export function useSearch(parsedParagraphs: Ref<string[]>) {
@@ -34,6 +35,19 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     if (!searchQuery.value.trim()) return []
     return fuse.value.search(searchQuery.value.trim()).slice(0, 15)
   })
+
+  watchDebounced(
+    searchQuery,
+    (newQuery) => {
+      if (!newQuery.trim() || searchResults.value.length === 0) {
+        selectedSentence.value = null
+        dictionaryData.value = null
+        return
+      }
+      selectSentence(searchResults.value[0].item)
+    },
+    { debounce: 500, maxWait: 2000 }
+  )
 
   const selectSentence = async (item: any) => {
     selectedSentence.value = item

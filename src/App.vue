@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref } from 'vue'
 import { usePdf } from '@/composables/usePdf'
 import { useSearch } from '@/composables/useSearch'
 
 import ReaderUpload from '@/components/reader/ReaderUpload.vue'
 import ReaderHeader from '@/components/reader/ReaderHeader.vue'
 import ReaderView from '@/components/reader/ReaderView.vue'
-import SearchTranslatorDialog from '@/components/reader/SearchTranslatorDialog.vue'
+import SearchTranslatorView from '@/components/reader/SearchTranslatorView.vue'
 
-const { isParsing, parsedParagraphs, fileName, parsePdf } = usePdf()
+const { isParsing, parsedParagraphs, fileName, parsePdf, deletePdf, hasStorageError } = usePdf()
 const { 
   searchQuery, 
   searchResults, 
@@ -19,55 +19,30 @@ const {
 } = useSearch(parsedParagraphs)
 
 const fontSize = ref([20])
-const isSearchOpen = ref(false)
-
-const toggleSearch = () => { 
-  isSearchOpen.value = !isSearchOpen.value 
-}
-
-watch(isSearchOpen, (isOpen) => {
-  if (!isOpen) {
-    resetSearch()
-  }
-})
-
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault()
-    toggleSearch()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
+const activeTab = ref<'search' | 'reader'>('search')
 
 const onFileDropped = (file: File) => {
   parsePdf(file)
+  activeTab.value = 'search'
+}
+
+const handleDeleteDocument = () => {
+  if (confirm('Are you sure you want to close and delete this document from the local session?')) {
+    deletePdf()
+    resetSearch()
+  }
 }
 </script>
 
 <template>
-  <div class="min-h-[100dvh] max-w-[1440px] mx-auto bg-[#FDFBF7] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-neutral-200 dark:selection:bg-neutral-800 transition-colors duration-300 relative">
-    
-    <SearchTranslatorDialog 
-      v-model:open="isSearchOpen"
-      v-model:searchQuery="searchQuery"
-      :searchResults="searchResults"
-      :selectedSentence="selectedSentence"
-      :isFetchingTranslation="isFetchingTranslation"
-      :dictionaryData="dictionaryData"
-      @select-sentence="selectSentence"
-    />
+  <div class="min-h-[100dvh] max-w-[1440px] mx-auto bg-[#FDFBF7] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-neutral-200 dark:selection:bg-neutral-800 transition-colors duration-300 relative flex flex-col">
 
     <ReaderHeader 
       v-if="parsedParagraphs.length > 0"
       :fileName="fileName"
       v-model:fontSize="fontSize"
-      @toggle-search="toggleSearch"
+      v-model:activeTab="activeTab"
+      @delete-document="handleDeleteDocument"
     />
 
     <ReaderUpload 
@@ -76,11 +51,27 @@ const onFileDropped = (file: File) => {
       @file-dropped="onFileDropped"
     />
 
-    <ReaderView 
-      v-else
-      :parsedParagraphs="parsedParagraphs"
-      :fontSize="fontSize[0]"
-    />
+    <div v-else class="flex-1 flex flex-col overflow-hidden">
+      <div v-if="hasStorageError" class="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-2 text-center text-sm">
+        Local storage full. Document parsed but won't be saved for your next session.
+      </div>
+      
+      <SearchTranslatorView 
+        v-if="activeTab === 'search'"
+        v-model:searchQuery="searchQuery"
+        :searchResults="searchResults"
+        :selectedSentence="selectedSentence"
+        :isFetchingTranslation="isFetchingTranslation"
+        :dictionaryData="dictionaryData"
+        @select-sentence="selectSentence"
+      />
+
+      <ReaderView 
+        v-else-if="activeTab === 'reader'"
+        :parsedParagraphs="parsedParagraphs"
+        :fontSize="fontSize[0]"
+      />
+    </div>
     
   </div>
 </template>
