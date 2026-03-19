@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FileText, Search } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { FileText, Search, List, Languages } from 'lucide-vue-next'
 
 defineProps<{
   searchQuery: string
@@ -7,12 +8,15 @@ defineProps<{
   selectedSentence: any
   isFetchingTranslation: boolean
   dictionaryData: any
+  translationEnVi: string | null
 }>()
 
 const emit = defineEmits<{
   (e: 'update:searchQuery', value: string): void
   (e: 'select-sentence', item: any): void
 }>()
+
+const activeTab = ref<'results' | 'translation'>('results')
 
 const highlightText = (text: string, query: string) => {
   if (!query) return text
@@ -24,12 +28,49 @@ const highlightText = (text: string, query: string) => {
 const onUpdateSearchQuery = (val: string | number) => {
   emit('update:searchQuery', String(val))
 }
+
+const selectSentenceAndSwitchTab = (item: any) => {
+  emit('select-sentence', item)
+  // On mobile, automatically switch to translation tab when a sentence is selected
+  if (window.innerWidth < 768) {
+    activeTab.value = 'translation'
+  }
+}
 </script>
 
 <template>
   <div class="flex-1 w-full bg-white dark:bg-neutral-950 flex flex-col md:flex-row shadow-sm border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden h-[calc(100vh-80px)]">
+    <!-- Mobile Tab Navigation -->
+    <div class="md:hidden flex border-b border-neutral-200 dark:border-neutral-800">
+      <button 
+        @click="activeTab = 'results'"
+        :class="[
+          'flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors',
+          activeTab === 'results' ? 'text-neutral-900 dark:text-neutral-100 border-b-2 border-neutral-900 dark:border-neutral-100' : 'text-neutral-400 dark:text-neutral-500'
+        ]"
+      >
+        <List class="w-4 h-4" />
+        Results ({{ searchResults.length }})
+      </button>
+      <button 
+        @click="activeTab = 'translation'"
+        :class="[
+          'flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors',
+          activeTab === 'translation' ? 'text-neutral-900 dark:text-neutral-100 border-b-2 border-neutral-900 dark:border-neutral-100' : 'text-neutral-400 dark:text-neutral-500'
+        ]"
+      >
+        <Languages class="w-4 h-4" />
+        Translation
+      </button>
+    </div>
+
     <!-- Left Pane: Search & List -->
-    <div class="w-full md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-800 h-full bg-[#FDFBF7] dark:bg-neutral-950">
+    <div 
+      :class="[
+        'w-full md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-800 h-full bg-[#FDFBF7] dark:bg-neutral-950 transition-all duration-300',
+        activeTab !== 'results' ? 'hidden md:flex' : 'flex'
+      ]"
+    >
       <div class="p-4 border-b border-neutral-200 dark:border-neutral-800">
         <input 
           class="w-full bg-transparent text-xl md:text-2xl placeholder:text-neutral-400 dark:placeholder:text-neutral-600 focus:outline-none text-neutral-900 dark:text-neutral-100 font-sans"
@@ -50,7 +91,7 @@ const onUpdateSearchQuery = (val: string | number) => {
           <div 
             v-for="res in searchResults" 
             :key="res.item.id" 
-            @click="emit('select-sentence', res.item)"
+            @click="selectSentenceAndSwitchTab(res.item)"
             :class="[
               'flex flex-col p-5 md:p-6 border-b border-neutral-100 dark:border-neutral-800/50 last:border-0 items-start hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors duration-200 w-full cursor-pointer',
               selectedSentence?.id === res.item.id ? 'bg-neutral-100 dark:bg-neutral-800' : ''
@@ -63,7 +104,12 @@ const onUpdateSearchQuery = (val: string | number) => {
     </div>
 
     <!-- Right Pane: Translator Box -->
-    <div class="w-full md:w-1/2 bg-neutral-50/50 dark:bg-neutral-900/30 p-6 md:p-12 overflow-y-auto min-h-full">
+    <div 
+      :class="[
+        'w-full md:w-1/2 bg-neutral-50/50 dark:bg-neutral-900/30 p-6 md:p-12 overflow-y-auto min-h-full transition-all duration-300',
+        activeTab !== 'translation' ? 'hidden md:block' : 'block'
+      ]"
+    >
       <div v-if="selectedSentence" class="space-y-12 max-w-2xl mx-auto">
         <div>
           <h3 class="text-xs font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest mb-6 flex items-center gap-2">
@@ -76,7 +122,7 @@ const onUpdateSearchQuery = (val: string | number) => {
 
         <div>
           <h3 class="text-xs font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest mb-6 flex items-center justify-between">
-            <span class="flex items-center gap-2"><Search class="w-4 h-4" /> Translation API</span>
+            <span class="flex items-center gap-2"><Search class="w-4 h-4" /> Translation & Dictionary</span>
             <span v-if="isFetchingTranslation" class="px-3 py-1 rounded-full bg-neutral-200 dark:bg-neutral-800 text-[10px] text-neutral-500 uppercase tracking-widest animate-pulse">Fetching</span>
           </h3>
           
@@ -86,8 +132,18 @@ const onUpdateSearchQuery = (val: string | number) => {
             <div class="h-6 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
           </div>
           
-          <div v-else class="text-lg md:text-xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
-            <div v-if="dictionaryData && !dictionaryData.error && Array.isArray(dictionaryData)">
+          <div v-else class="space-y-10">
+            <!-- English to Vietnamese Section -->
+            <div v-if="translationEnVi" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
+              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-red-400"></div> English to Vietnamese
+              </h4>
+              <p class="text-2xl md:text-3xl font-serif text-neutral-900 dark:text-neutral-100 leading-tight">
+                {{ translationEnVi }}
+              </p>
+            </div>
+
+            <div v-if="dictionaryData && !dictionaryData.error && Array.isArray(dictionaryData)" class="text-lg md:text-xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
               <div v-for="(entry, index) in dictionaryData" :key="index" class="mb-10 last:mb-0">
                 <div class="flex items-baseline gap-4 mb-4">
                   <span class="font-bold text-neutral-900 dark:text-neutral-100 text-4xl font-sans">{{ entry.word }}</span>

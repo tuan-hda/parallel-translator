@@ -7,6 +7,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
   const selectedSentence = ref<any>(null)
   const isFetchingTranslation = ref(false)
   const dictionaryData = ref<any>(null)
+  const translationEnVi = ref<string | null>(null)
 
   const sentencesList = computed(() => {
     return parsedParagraphs.value.flatMap((p, pIdx) => {
@@ -42,6 +43,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
       if (!newQuery.trim() || searchResults.value.length === 0) {
         selectedSentence.value = null
         dictionaryData.value = null
+        translationEnVi.value = null
         return
       }
       selectSentence(searchResults.value[0].item)
@@ -53,6 +55,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     selectedSentence.value = item
     isFetchingTranslation.value = true
     dictionaryData.value = null
+    translationEnVi.value = null
     
     try {
       // Get the first word of the search query to look up
@@ -61,15 +64,41 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
         throw new Error('No word to search')
       }
       
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordToLookup)}`)
-      if (!res.ok) {
-        dictionaryData.value = { error: 'Word not found in dictionary.' }
+      const [dictionaryRes, translationRes] = await Promise.all([
+        fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordToLookup)}`),
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(wordToLookup)}&langpair=en-US|vi-VN`)
+      ])
+
+      if (dictionaryRes.ok) {
+        dictionaryData.value = await dictionaryRes.json()
       } else {
-        const data = await res.json()
-        dictionaryData.value = data
+        dictionaryData.value = { error: 'Word not found in English dictionary.' }
+      }
+
+      if (translationRes.ok) {
+        const transData = await translationRes.json()
+        
+        if (transData.matches && transData.matches.length > 0) {
+          // Sort by match confidence score descending
+          const sortedMatches = transData.matches.sort((a: any, b: any) => b.match - a.match)
+          
+          // Extract up to 3 unique, sensible-length translations
+          const uniqueTranslations = Array.from(new Set(
+            sortedMatches.map((m: any) => m.translation.trim().toLowerCase())
+          )).filter((t: any) => t.length > 0 && t.length < 40).slice(0, 3)
+          
+          if (uniqueTranslations.length > 0) {
+            const finalString = uniqueTranslations.join(', ')
+            translationEnVi.value = finalString.charAt(0).toUpperCase() + finalString.slice(1)
+          } else {
+            translationEnVi.value = transData.responseData.translatedText
+          }
+        } else {
+          translationEnVi.value = transData.responseData.translatedText
+        }
       }
     } catch (e) {
-      dictionaryData.value = { error: 'Failed to fetch dictionary data.' }
+      dictionaryData.value = { error: 'Failed to fetch translation data.' }
     } finally {
       isFetchingTranslation.value = false
     }
@@ -79,6 +108,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     searchQuery.value = ''
     selectedSentence.value = null
     dictionaryData.value = null
+    translationEnVi.value = null
   }
 
   return {
@@ -87,6 +117,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     selectedSentence,
     isFetchingTranslation,
     dictionaryData,
+    translationEnVi,
     selectSentence,
     resetSearch
   }
