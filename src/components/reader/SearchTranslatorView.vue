@@ -116,7 +116,7 @@ const selectSentenceAndSwitchTab = (item: any) => {
           <h3 class="text-xs font-bold uppercase text-neutral-400 dark:text-neutral-500 tracking-widest mb-6 flex items-center gap-2">
             <FileText class="w-4 h-4" /> Original Context
           </h3>
-          <p class="text-xl md:text-2xl text-neutral-900 dark:text-neutral-100 font-serif leading-relaxed" v-html="highlightText(selectedSentence.text, searchQuery)"></p>
+          <p class="text-xl md:text-2xl text-neutral-900 dark:text-neutral-100 font-serif leading-relaxed" v-html="highlightText(selectedSentence.contextText || selectedSentence.text, searchQuery)"></p>
         </div>
         
         <div class="w-full h-px bg-neutral-200 dark:bg-neutral-800"></div>

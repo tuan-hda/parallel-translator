@@ -11,6 +11,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
   const sentenceTranslationEnVi = ref<string | null>(null);
 
   const sentencesList = computed(() => {
+    let globalIndex = 0;
     return parsedParagraphs.value.flatMap((p, pIdx) => {
       // Split on '.', '!', '?' followed by space, or newlines
       return p
@@ -22,13 +23,14 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
                 id: `${pIdx}-${sIdx}`,
                 text: text,
                 paragraphIndex: pIdx,
+                globalIndex: globalIndex++,
               }
             : null;
         })
         .filter(
           (
             item,
-          ): item is { id: string; text: string; paragraphIndex: number } =>
+          ): item is { id: string; text: string; paragraphIndex: number; globalIndex: number } =>
             item !== null,
         );
     });
@@ -64,7 +66,16 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
   );
 
   const selectSentence = async (item: any) => {
-    selectedSentence.value = item;
+    let contextText = item.text;
+    if (item.globalIndex !== undefined && sentencesList.value) {
+      const idx = item.globalIndex;
+      const start = Math.max(0, idx - 1);
+      const end = Math.min(sentencesList.value.length - 1, idx + 2);
+      contextText = sentencesList.value.slice(start, end + 1).map((s: any) => s.text).join(' ');
+    }
+
+    const itemWithContext = { ...item, contextText };
+    selectedSentence.value = itemWithContext;
     isFetchingTranslation.value = true;
     dictionaryData.value = null;
     translationEnVi.value = null;
@@ -83,27 +94,19 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
       const match = item.text.match(wordRegex);
       const wordToLookup = match ? match[0] : queryWord;
 
-      // Azure Translator for full sentence
-      const azureKey = import.meta.env.VITE_AZURE_TRANSLATOR_KEY;
-      const azureRegion = import.meta.env.VITE_AZURE_TRANSLATOR_REGION;
-
+      // Azure Translator for full sentence via Vercel Serverless Function
       let azurePromise: any = Promise.resolve(null);
-      if (azureKey && azureRegion && item.text) {
-        azurePromise = fetch(
-          "https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=vi",
-          {
-            method: "POST",
-            headers: {
-              "Ocp-Apim-Subscription-Key": azureKey,
-              "Ocp-Apim-Subscription-Region": azureRegion,
-              "Content-type": "application/json",
-            },
-            body: JSON.stringify([{ text: item.text }]),
+      if (contextText) {
+        azurePromise = fetch("/api/translate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-        )
+          body: JSON.stringify({ text: contextText }),
+        })
           .then((res) => res.json())
           .catch((err) => {
-            console.error("Azure Translator API Error:", err);
+            console.error("Translation API Error:", err);
             return null;
           });
       }
