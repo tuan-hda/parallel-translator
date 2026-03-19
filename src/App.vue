@@ -15,6 +15,8 @@ const {
   selectedSentence, 
   isFetchingTranslation, 
   dictionaryData, 
+  translationEnVi,
+  sentenceTranslationEnVi,
   selectSentence,  resetSearch 
 } = useSearch(parsedParagraphs)
 
@@ -63,6 +65,8 @@ const handleDeleteDocument = () => {
         :selectedSentence="selectedSentence"
         :isFetchingTranslation="isFetchingTranslation"
         :dictionaryData="dictionaryData"
+        :translationEnVi="translationEnVi"
+        :sentenceTranslationEnVi="sentenceTranslationEnVi"
         @select-sentence="selectSentence"
       />
 
