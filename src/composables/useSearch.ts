@@ -7,7 +7,8 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
   const selectedSentence = ref<any>(null)
   const isFetchingTranslation = ref(false)
   const dictionaryData = ref<any>(null)
-  const translationEnVi = ref<string | null>(null)
+  const translationEnVi = ref<string[] | null>(null)
+  const sentenceTranslationEnVi = ref<string | null>(null)
 
   const sentencesList = computed(() => {
     return parsedParagraphs.value.flatMap((p, pIdx) => {
@@ -44,6 +45,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
         selectedSentence.value = null
         dictionaryData.value = null
         translationEnVi.value = null
+        sentenceTranslationEnVi.value = null
         return
       }
       selectSentence(searchResults.value[0].item)
@@ -56,18 +58,50 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     isFetchingTranslation.value = true
     dictionaryData.value = null
     translationEnVi.value = null
+    sentenceTranslationEnVi.value = null
     
     try {
       // Get the first word of the search query to look up
-      const wordToLookup = searchQuery.value.trim().split(/\s+/)[0]
-      if (!wordToLookup) {
+      const queryWord = searchQuery.value.trim().split(/\s+/)[0]
+      if (!queryWord) {
         throw new Error('No word to search')
       }
       
-      const [dictionaryRes, translationRes] = await Promise.all([
+      // Try to find the complete word in the original text (e.g. if queryWord is "tragi", find "tragic")
+      const escapedQuery = queryWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const wordRegex = new RegExp(`\\b\\w*${escapedQuery}\\w*\\b`, 'i')
+      const match = item.text.match(wordRegex)
+      const wordToLookup = match ? match[0] : queryWord
+      
+      // Azure Translator for full sentence
+      const azureKey = import.meta.env.VITE_AZURE_TRANSLATOR_KEY
+      const azureRegion = import.meta.env.VITE_AZURE_TRANSLATOR_REGION
+      
+      let azurePromise = Promise.resolve(null)
+      if (azureKey && azureRegion && item.text) {
+        azurePromise = fetch('https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=vi', {
+          method: 'POST',
+          headers: {
+            'Ocp-Apim-Subscription-Key': azureKey,
+            'Ocp-Apim-Subscription-Region': azureRegion,
+            'Content-type': 'application/json',
+          },
+          body: JSON.stringify([{ text: item.text }])
+        }).then(res => res.json()).catch(err => {
+          console.error('Azure Translator API Error:', err)
+          return null
+        })
+      }
+
+      const [dictionaryRes, translationRes, azureData] = await Promise.all([
         fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordToLookup)}`),
-        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(wordToLookup)}&langpair=en-US|vi-VN`)
+        fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(wordToLookup)}&langpair=en-US|vi-VN`),
+        azurePromise
       ])
+
+      if (azureData && Array.isArray(azureData) && azureData[0]?.translations?.[0]?.text) {
+        sentenceTranslationEnVi.value = azureData[0].translations[0].text
+      }
 
       if (dictionaryRes.ok) {
         dictionaryData.value = await dictionaryRes.json()
@@ -88,13 +122,12 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
           )).filter((t: any) => t.length > 0 && t.length < 40).slice(0, 3)
           
           if (uniqueTranslations.length > 0) {
-            const finalString = uniqueTranslations.join(', ')
-            translationEnVi.value = finalString.charAt(0).toUpperCase() + finalString.slice(1)
+            translationEnVi.value = uniqueTranslations.map(t => String(t).charAt(0).toUpperCase() + String(t).slice(1))
           } else {
-            translationEnVi.value = transData.responseData.translatedText
+            translationEnVi.value = [transData.responseData.translatedText]
           }
         } else {
-          translationEnVi.value = transData.responseData.translatedText
+          translationEnVi.value = [transData.responseData.translatedText]
         }
       }
     } catch (e) {
@@ -118,6 +151,7 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     isFetchingTranslation,
     dictionaryData,
     translationEnVi,
+    sentenceTranslationEnVi,
     selectSentence,
     resetSearch
   }

@@ -49,6 +49,13 @@ parallel-translator/
 | `@/lib`           | `src/lib`                                   |
 | `@/composables`   | `src/composables`                           |
 
+## Design Rules
+
+- **Translation Order:** When displaying translation results in the UI, always follow this specific vertical order to maintain a consistent user experience:
+  1. **English-to-English dictionary translation** (e.g., phonetics, part of speech, definitions).
+  2. **English-to-Vietnamese word translation** (e.g., numbered list of translated words/phrases).
+  3. **Full sentence English-to-Vietnamese translation** (e.g., the machine translation of the entire selected sentence).
+
 ## Architecture Rules
 
 - **Prefer External Tools:** ALWAYS prefer to use external, existing tools and packages from the marketplace or npm rather than building functionality from scratch (e.g., use an existing dropzone or PDF parser).

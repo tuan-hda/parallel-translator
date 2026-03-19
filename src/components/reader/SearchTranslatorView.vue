@@ -8,7 +8,8 @@ defineProps<{
   selectedSentence: any
   isFetchingTranslation: boolean
   dictionaryData: any
-  translationEnVi: string | null
+  translationEnVi: string[] | null
+  sentenceTranslationEnVi: string | null
 }>()
 
 const emit = defineEmits<{
@@ -133,16 +134,6 @@ const selectSentenceAndSwitchTab = (item: any) => {
           </div>
           
           <div v-else class="space-y-10">
-            <!-- English to Vietnamese Section -->
-            <div v-if="translationEnVi" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
-              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
-                <div class="w-1.5 h-1.5 rounded-full bg-red-400"></div> English to Vietnamese
-              </h4>
-              <p class="text-2xl md:text-3xl font-serif text-neutral-900 dark:text-neutral-100 leading-tight">
-                {{ translationEnVi }}
-              </p>
-            </div>
-
             <div v-if="dictionaryData && !dictionaryData.error && Array.isArray(dictionaryData)" class="text-lg md:text-xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
               <div v-for="(entry, index) in dictionaryData" :key="index" class="mb-10 last:mb-0">
                 <div class="flex items-baseline gap-4 mb-4">
@@ -174,6 +165,29 @@ const selectSentenceAndSwitchTab = (item: any) => {
             <div v-else-if="dictionaryData?.error" class="flex flex-col items-center justify-center py-16 text-center text-neutral-400">
               <Search class="w-12 h-12 mb-6 opacity-20" />
               <p class="text-base">{{ dictionaryData.error }}</p>
+            </div>
+
+            <!-- English to Vietnamese Section -->
+            <div v-if="translationEnVi && translationEnVi.length > 0" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
+              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-red-400"></div> English to Vietnamese
+              </h4>
+              <ul class="space-y-3 mt-4 text-2xl md:text-3xl font-serif text-neutral-900 dark:text-neutral-100 leading-tight">
+                <li v-for="(trans, tIdx) in translationEnVi" :key="tIdx" class="flex gap-4 items-start">
+                  <span class="text-neutral-300 dark:text-neutral-600 font-sans text-lg mt-1.5 min-w-[1.5rem]">{{ Number(tIdx) + 1 }}.</span>
+                  <span>{{ trans }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Full Sentence Translation Section -->
+            <div v-if="sentenceTranslationEnVi" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
+              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Full Sentence Translation
+              </h4>
+              <p class="text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed italic">
+                {{ sentenceTranslationEnVi }}
+              </p>
             </div>
           </div>
         </div>
