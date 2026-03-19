@@ -10,6 +10,7 @@ export default async function handler(request: Request) {
   if (request.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
       status: 405,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
@@ -22,6 +23,7 @@ export default async function handler(request: Request) {
         JSON.stringify({ error: "Missing text in request body" }),
         {
           status: 400,
+          headers: { "Content-Type": "application/json" },
         },
       );
     }
@@ -35,6 +37,7 @@ export default async function handler(request: Request) {
     if (cached) {
       return new Response(cached, {
         status: 200,
+        headers: { "Content-Type": "application/json", "X-Cache": "HIT" },
       });
     }
 
@@ -47,6 +50,7 @@ export default async function handler(request: Request) {
       );
       return new Response(
         JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -70,6 +74,7 @@ export default async function handler(request: Request) {
         JSON.stringify({ error: "Failed to translate text" }),
         {
           status: response.status,
+          headers: { "Content-Type": "application/json" },
         },
       );
     }
@@ -82,11 +87,13 @@ export default async function handler(request: Request) {
 
     return new Response(responseBody, {
       status: 200,
+      headers: { "Content-Type": "application/json", "X-Cache": "MISS" },
     });
   } catch (error) {
     console.error("Error in translate API:", error);
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
+      headers: { "Content-Type": "application/json" },
     });
   }
 }
