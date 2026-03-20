@@ -8,6 +8,7 @@ The app has moved away from a modal-based search to a persistent, tabbed interfa
 The app now utilizes **`localStorage`** to persist the parsed PDF paragraphs and filename across sessions, allowing the user to resume their work immediately.
 
 ## Recent Changes
+- **UX & Performance Improvements for AI:** Added keyboard shortcuts for search navigation, implemented auto-focus, streaming for AI explanations to render responses immediately using markdown, and auto-scrolling to the answer box. Also added server-side caching using `@vercel/functions` for `/api/llm`.
 - **Expanded Context Window:** Increased the context text around the matched sentence to 7 sentences total for better translation accuracy.
 - **AI Explanation:** Added an "Ask AI to Explain" button with a dedicated `/api/llm` edge function, allowing users to send the full context to Gemini or OpenAI for detailed Vietnamese explanations.
 - **Revamped Layout:** Replaced `SearchTranslatorDialog` with a dedicated `SearchTranslatorView` component. 

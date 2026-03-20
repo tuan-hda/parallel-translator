@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { FileText, Search, List, Languages } from 'lucide-vue-next'
+import { marked } from 'marked'
 
 const props = defineProps<{
   searchQuery: string
@@ -21,11 +22,102 @@ const emit = defineEmits<{
 const activeTab = ref<'results' | 'translation'>('results')
 
 const isAskingAI = ref(false)
+const isStreamingAI = ref(false)
 const aiExplanation = ref<string | null>(null)
+
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const rightPaneRef = ref<HTMLDivElement | null>(null)
+const focusedResultIndex = ref(-1)
 
 watch(() => props.selectedSentence, () => {
   aiExplanation.value = null
   isAskingAI.value = false
+  isStreamingAI.value = false
+})
+
+watch(() => props.searchResults, (newVal) => {
+  if (newVal && newVal.length > 0) {
+    focusedResultIndex.value = 0
+  } else {
+    focusedResultIndex.value = -1
+  }
+})
+
+const renderedAiExplanation = computed(() => {
+  if (!aiExplanation.value) return ''
+  return marked(aiExplanation.value)
+})
+
+const handleGlobalKeydown = (e: KeyboardEvent) => {
+  // Navigation shortcuts
+  if (e.key === 'Escape') {
+    // If we are looking at a translation and hit escape, maybe go back to results tab or focus input
+    e.preventDefault()
+    searchInputRef.value?.focus()
+    return
+  }
+
+  // Ctrl+Enter or Cmd+Enter to ask AI
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    if (props.selectedSentence && !isAskingAI.value && !isStreamingAI.value) {
+      askAILLM()
+    }
+    return
+  }
+
+  // Focus search box when pressing '/'
+  if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+    e.preventDefault()
+    searchInputRef.value?.focus()
+    return
+  }
+
+  // Arrow up/down navigation
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    // Only intercept if we are focused on the input, OR if we aren't focused on anything else specifically scrolling
+    if (document.activeElement === document.body || document.activeElement === searchInputRef.value) {
+      e.preventDefault()
+      if (!props.searchResults.length) return
+
+      if (e.key === 'ArrowDown') {
+        if (focusedResultIndex.value < props.searchResults.length - 1) {
+          focusedResultIndex.value++
+        }
+      } else {
+        if (focusedResultIndex.value > 0) {
+          focusedResultIndex.value--
+        }
+      }
+      
+      // Auto-scroll the focused item into view if possible
+      const itemEl = document.getElementById(`search-result-${focusedResultIndex.value}`)
+      if (itemEl) {
+        itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }
+  }
+
+  // Enter to select focused result
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    if (document.activeElement === searchInputRef.value || document.activeElement === document.body) {
+      e.preventDefault()
+      if (focusedResultIndex.value >= 0 && props.searchResults[focusedResultIndex.value]) {
+        selectSentenceAndSwitchTab(props.searchResults[focusedResultIndex.value].item)
+        searchInputRef.value?.blur()
+      }
+    }
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
+  // Auto focus search input on mount
+  searchInputRef.value?.focus()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 
 const askAILLM = async () => {
@@ -35,7 +127,16 @@ const askAILLM = async () => {
   const query = `Ngữ cảnh: sách ${props.fileName || 'Không rõ'}. Giải thích câu sau đây sang tiếng Việt: ${context}`
   
   isAskingAI.value = true
-  aiExplanation.value = null
+  isStreamingAI.value = true
+  aiExplanation.value = ''
+  
+  // Auto scroll to the AI box
+  nextTick(() => {
+    const aiBox = document.getElementById('ai-explanation-box')
+    if (aiBox) {
+      aiBox.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }
+  })
   
   try {
     const res = await fetch('/api/llm', {
@@ -46,13 +147,32 @@ const askAILLM = async () => {
     
     if (!res.ok) throw new Error('Failed to fetch from AI LLM')
     
-    const data = await res.json()
-    aiExplanation.value = data.text || data.response || "No response"
+    if (!res.body) throw new Error('No streaming body')
+
+    isAskingAI.value = false // Done with initial request, now streaming
+    
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      aiExplanation.value += decoder.decode(value, { stream: true })
+      
+      // Keep scrolling down smoothly while streaming
+      nextTick(() => {
+        if (rightPaneRef.value) {
+          rightPaneRef.value.scrollTop = rightPaneRef.value.scrollHeight
+        }
+      })
+    }
   } catch (error) {
     console.error(error)
     aiExplanation.value = "An error occurred while asking the AI. Please make sure the AI endpoint is configured."
   } finally {
     isAskingAI.value = false
+    isStreamingAI.value = false
   }
 }
 
@@ -111,6 +231,7 @@ const selectSentenceAndSwitchTab = (item: any) => {
     >
       <div class="p-4 border-b border-neutral-200 dark:border-neutral-800">
         <input 
+          ref="searchInputRef"
           class="w-full bg-transparent text-xl md:text-2xl placeholder:text-neutral-400 dark:placeholder:text-neutral-600 focus:outline-none text-neutral-900 dark:text-neutral-100 font-sans"
           placeholder="Search for keywords or phrases..." 
           :value="searchQuery" 
@@ -127,12 +248,14 @@ const selectSentenceAndSwitchTab = (item: any) => {
             Fuzzy Matches (Sentences)
           </div>
           <div 
-            v-for="res in searchResults" 
+            v-for="(res, index) in searchResults" 
             :key="res.item.id" 
+            :id="`search-result-${index}`"
             @click="selectSentenceAndSwitchTab(res.item)"
             :class="[
               'flex flex-col p-5 md:p-6 border-b border-neutral-100 dark:border-neutral-800/50 last:border-0 items-start hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors duration-200 w-full cursor-pointer',
-              selectedSentence?.id === res.item.id ? 'bg-neutral-100 dark:bg-neutral-800' : ''
+              selectedSentence?.id === res.item.id ? 'bg-neutral-100 dark:bg-neutral-800' : '',
+              focusedResultIndex === index && selectedSentence?.id !== res.item.id ? 'bg-neutral-50 dark:bg-neutral-900 ring-2 ring-inset ring-neutral-300 dark:ring-neutral-700' : ''
             ]"
           >
             <p class="text-base md:text-xl text-neutral-900 dark:text-neutral-200 font-serif leading-relaxed" v-html="highlightText(res.item.text, searchQuery)"></p>
@@ -143,6 +266,7 @@ const selectSentenceAndSwitchTab = (item: any) => {
 
     <!-- Right Pane: Translator Box -->
     <div 
+      ref="rightPaneRef"
       :class="[
         'w-full md:w-1/2 bg-neutral-50/50 dark:bg-neutral-900/30 p-6 md:p-12 overflow-y-auto min-h-full transition-all duration-300',
         activeTab !== 'translation' ? 'hidden md:block' : 'block'
@@ -232,15 +356,15 @@ const selectSentenceAndSwitchTab = (item: any) => {
               <button 
                 @click="askAILLM"
                 class="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-sm"
-                :disabled="isAskingAI"
+                :disabled="isAskingAI || isStreamingAI"
               >
-                <span v-if="isAskingAI" class="animate-spin text-lg">⚙</span>
+                <span v-if="isAskingAI || isStreamingAI" class="animate-spin text-lg">⚙</span>
                 <span v-else>✨</span>
                 Ask AI to Explain
               </button>
             </div>
             
-            <div v-if="aiExplanation || isAskingAI" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm mt-4">
+            <div id="ai-explanation-box" v-if="aiExplanation || isAskingAI" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm mt-4">
               <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
                 <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div> AI Explanation
               </h4>
@@ -249,9 +373,12 @@ const selectSentenceAndSwitchTab = (item: any) => {
                 <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
                 <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-4/6 animate-pulse"></div>
               </div>
-              <p v-else class="text-lg md:text-xl text-neutral-800 dark:text-neutral-200 font-serif leading-relaxed whitespace-pre-wrap">
-                {{ aiExplanation }}
-              </p>
+              <div 
+                v-else 
+                class="prose prose-neutral dark:prose-invert prose-lg max-w-none text-neutral-800 dark:text-neutral-200 font-serif leading-relaxed"
+                v-html="renderedAiExplanation"
+              >
+              </div>
             </div>
           </div>
         </div>
