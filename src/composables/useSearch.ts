@@ -69,8 +69,8 @@ export function useSearch(parsedParagraphs: Ref<string[]>) {
     let contextText = item.text;
     if (item.globalIndex !== undefined && sentencesList.value) {
       const idx = item.globalIndex;
-      const start = Math.max(0, idx - 1);
-      const end = Math.min(sentencesList.value.length - 1, idx + 2);
+      const start = Math.max(0, idx - 3);
+      const end = Math.min(sentencesList.value.length - 1, idx + 3);
       contextText = sentencesList.value.slice(start, end + 1).map((s: any) => s.text).join(' ');
     }
 

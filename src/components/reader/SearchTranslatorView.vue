@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { FileText, Search, List, Languages } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   searchQuery: string
   searchResults: any[]
   selectedSentence: any
@@ -10,6 +10,7 @@ defineProps<{
   dictionaryData: any
   translationEnVi: string[] | null
   sentenceTranslationEnVi: string | null
+  fileName?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +19,42 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<'results' | 'translation'>('results')
+
+const isAskingAI = ref(false)
+const aiExplanation = ref<string | null>(null)
+
+watch(() => props.selectedSentence, () => {
+  aiExplanation.value = null
+  isAskingAI.value = false
+})
+
+const askAILLM = async () => {
+  if (!props.selectedSentence) return
+  
+  const context = props.selectedSentence.contextText || props.selectedSentence.text
+  const query = `Ngữ cảnh: sách ${props.fileName || 'Không rõ'}. Giải thích câu sau đây sang tiếng Việt: ${context}`
+  
+  isAskingAI.value = true
+  aiExplanation.value = null
+  
+  try {
+    const res = await fetch('/api/llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: query })
+    })
+    
+    if (!res.ok) throw new Error('Failed to fetch from AI LLM')
+    
+    const data = await res.json()
+    aiExplanation.value = data.text || data.response || "No response"
+  } catch (error) {
+    console.error(error)
+    aiExplanation.value = "An error occurred while asking the AI. Please make sure the AI endpoint is configured."
+  } finally {
+    isAskingAI.value = false
+  }
+}
 
 const highlightText = (text: string, query: string) => {
   if (!query) return text
@@ -187,6 +224,33 @@ const selectSentenceAndSwitchTab = (item: any) => {
               </h4>
               <p class="text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed italic">
                 {{ sentenceTranslationEnVi }}
+              </p>
+            </div>
+
+            <!-- AI Explanation Section -->
+            <div v-if="selectedSentence" class="flex justify-end mt-4">
+              <button 
+                @click="askAILLM"
+                class="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-sm"
+                :disabled="isAskingAI"
+              >
+                <span v-if="isAskingAI" class="animate-spin text-lg">⚙</span>
+                <span v-else>✨</span>
+                Ask AI to Explain
+              </button>
+            </div>
+            
+            <div v-if="aiExplanation || isAskingAI" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm mt-4">
+              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div> AI Explanation
+              </h4>
+              <div v-if="isAskingAI" class="flex flex-col gap-3">
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-full animate-pulse"></div>
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
+                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-4/6 animate-pulse"></div>
+              </div>
+              <p v-else class="text-lg md:text-xl text-neutral-800 dark:text-neutral-200 font-serif leading-relaxed whitespace-pre-wrap">
+                {{ aiExplanation }}
               </p>
             </div>
           </div>

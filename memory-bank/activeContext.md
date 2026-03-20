@@ -8,6 +8,8 @@ The app has moved away from a modal-based search to a persistent, tabbed interfa
 The app now utilizes **`localStorage`** to persist the parsed PDF paragraphs and filename across sessions, allowing the user to resume their work immediately.
 
 ## Recent Changes
+- **Expanded Context Window:** Increased the context text around the matched sentence to 7 sentences total for better translation accuracy.
+- **AI Explanation:** Added an "Ask AI to Explain" button with a dedicated `/api/llm` edge function, allowing users to send the full context to Gemini or OpenAI for detailed Vietnamese explanations.
 - **Revamped Layout:** Replaced `SearchTranslatorDialog` with a dedicated `SearchTranslatorView` component. 
 - **Tabbed Navigation:** Implemented a tab switcher in the `ReaderHeader` for toggling between the search view and the document reader.
 - **Persistence:** Added local storage logic to `usePdf.ts` to cache document data (with a 5MB limit).
