@@ -7,6 +7,8 @@
 - **PDF Upload & Parsing:** A drag-and-drop area with a 5MB size limit that extracts text locally and caches it immediately for future sessions.
 - **Tabbed Layout System:** A dedicated `Search & Translate` tab and a `Document View` tab, allowing for distinct workflows within the same app.
 - **Search & Dictionary System:** 
+  - **AI Contextual Explanation:** A dedicated `/api/llm` endpoint that uses Gemini or OpenAI to provide detailed, context-aware translations and explanations of specific sentences in Vietnamese.
+  - **Expanded Search Context:** Now retrieves up to 7 sentences surrounding the target phrase for better contextual understanding.
   - **Debounced Auto-Fetch:** Typing in the search bar triggers a 500ms debounce that automatically selects the first result and fetches its meaning from `dictionaryapi.dev`.
   - **Split-Pane Search View:** A larger, taller persistent view where search results on the left are paired with context and translation data on the right.
 - **Session Management:** A "Close Document" feature that clears the session and wipes the document from local storage.

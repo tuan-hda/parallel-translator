@@ -58,7 +58,7 @@ const handleDeleteDocument = () => {
         Local storage full. Document parsed but won't be saved for your next session.
       </div>
       
-      <SearchTranslatorView 
+      <SearchTranslatorView
         v-if="activeTab === 'search'"
         v-model:searchQuery="searchQuery"
         :searchResults="searchResults"
@@ -67,9 +67,9 @@ const handleDeleteDocument = () => {
         :dictionaryData="dictionaryData"
         :translationEnVi="translationEnVi"
         :sentenceTranslationEnVi="sentenceTranslationEnVi"
+        :fileName="fileName"
         @select-sentence="selectSentence"
       />
-
       <ReaderView 
         v-else-if="activeTab === 'reader'"
         :parsedParagraphs="parsedParagraphs"
