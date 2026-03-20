@@ -1,4 +1,5 @@
 import { getCache } from "@vercel/functions";
+import { GoogleGenAI } from "@google/genai";
 
 export const config = {
   runtime: "edge",
@@ -56,23 +57,55 @@ export default async function handler(request: Request) {
     }
 
     const isGemini = apiKey.startsWith("AIza");
-    let response: Response;
+    const encoder = new TextEncoder();
 
     if (isGemini) {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}&alt=sse`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            generationConfig: { temperature: 0.3 }
-          }),
+      const ai = new GoogleGenAI({ apiKey });
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.3,
         }
-      );
+      });
+
+      const readableStream = new ReadableStream({
+        async start(controller) {
+          let fullContentAccumulator = "";
+          try {
+            for await (const chunk of responseStream) {
+              if (chunk.text) {
+                fullContentAccumulator += chunk.text;
+                controller.enqueue(encoder.encode(chunk.text));
+              }
+            }
+
+            if (fullContentAccumulator.length > 0) {
+              try {
+                await cache.set(cacheKey, fullContentAccumulator, { ttl: CACHE_TTL_SECONDS });
+              } catch (err) {
+                console.error("Failed to cache AI response:", err);
+              }
+            }
+            controller.close();
+          } catch (e) {
+            console.error("Gemini Streaming Error:", e);
+            controller.error(e);
+          }
+        }
+      });
+
+      return new Response(readableStream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Transfer-Encoding": "chunked",
+          "Cache-Control": "no-cache",
+          "X-Cache": "MISS"
+        },
+      });
     } else {
-      response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -87,85 +120,74 @@ export default async function handler(request: Request) {
           ],
         }),
       });
-    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI API error:", errorText);
-      return new Response("Đã xảy ra lỗi khi gọi AI API.", {
-        status: 500,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AI API error:", errorText);
+        return new Response("Đã xảy ra lỗi khi gọi AI API.", {
+          status: 500,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
 
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let fullContentAccumulator = "";
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContentAccumulator = "";
 
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        // Keep the last line in the buffer as it might be incomplete
-        buffer = lines.pop() || "";
+      const transformStream = new TransformStream({
+        transform(chunk, controller) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          // Keep the last line in the buffer as it might be incomplete
+          buffer = lines.pop() || "";
 
-        for (const line of lines) {
-          if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-            try {
-              const data = JSON.parse(line.slice(6));
-              let content = "";
-              if (isGemini) {
-                content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-              } else {
-                content = data.choices?.[0]?.delta?.content || "";
+          for (const line of lines) {
+            if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const content = data.choices?.[0]?.delta?.content || "";
+                if (content) {
+                  fullContentAccumulator += content;
+                  controller.enqueue(encoder.encode(content));
+                }
+              } catch (e) {
+                // Ignore parse errors on incomplete chunks
               }
+            }
+          }
+        },
+        async flush(controller) {
+          if (buffer.startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(buffer.slice(6));
+              const content = data.choices?.[0]?.delta?.content || "";
               if (content) {
                 fullContentAccumulator += content;
                 controller.enqueue(encoder.encode(content));
               }
-            } catch (e) {
-              // Ignore parse errors on incomplete chunks
+            } catch (e) {}
+          }
+          
+          // Cache the fully accumulated text
+          if (fullContentAccumulator.length > 0) {
+            try {
+              await cache.set(cacheKey, fullContentAccumulator, { ttl: CACHE_TTL_SECONDS });
+            } catch (err) {
+              console.error("Failed to cache AI response:", err);
             }
           }
         }
-      },
-      async flush(controller) {
-        if (buffer.startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
-          try {
-            const data = JSON.parse(buffer.slice(6));
-            let content = "";
-            if (isGemini) {
-              content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            } else {
-              content = data.choices?.[0]?.delta?.content || "";
-            }
-            if (content) {
-              fullContentAccumulator += content;
-              controller.enqueue(encoder.encode(content));
-            }
-          } catch (e) {}
-        }
-        
-        // Cache the fully accumulated text
-        if (fullContentAccumulator.length > 0) {
-          try {
-            await cache.set(cacheKey, fullContentAccumulator, { ttl: CACHE_TTL_SECONDS });
-          } catch (err) {
-            console.error("Failed to cache AI response:", err);
-          }
-        }
-      }
-    });
+      });
 
-    return new Response(response.body!.pipeThrough(transformStream), {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
-        "Cache-Control": "no-cache",
-        "X-Cache": "MISS"
-      },
-    });
+      return new Response(response.body!.pipeThrough(transformStream), {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Transfer-Encoding": "chunked",
+          "Cache-Control": "no-cache",
+          "X-Cache": "MISS"
+        },
+      });
+    }
 
   } catch (error) {
     console.error("Error in AI API:", error);
