@@ -36,7 +36,10 @@ export default async function handler(request: Request) {
     if (!apiKey) {
       return new Response(
         "Chưa cấu hình API Key cho AI (vui lòng thêm OPENAI_API_KEY hoặc GEMINI_API_KEY vào .env)",
-        { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+        {
+          status: 200,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        },
       );
     }
 
@@ -49,9 +52,9 @@ export default async function handler(request: Request) {
     if (cached) {
       return new Response(cached, {
         status: 200,
-        headers: { 
+        headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "X-Cache": "HIT"
+          "X-Cache": "HIT",
         },
       });
     }
@@ -62,12 +65,12 @@ export default async function handler(request: Request) {
     if (isGemini) {
       const ai = new GoogleGenAI({ apiKey });
       const responseStream = await ai.models.generateContentStream({
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-3.1-flash-lite-preview",
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.3,
-        }
+        },
       });
 
       const readableStream = new ReadableStream({
@@ -83,7 +86,9 @@ export default async function handler(request: Request) {
 
             if (fullContentAccumulator.length > 0) {
               try {
-                await cache.set(cacheKey, fullContentAccumulator, { ttl: CACHE_TTL_SECONDS });
+                await cache.set(cacheKey, fullContentAccumulator, {
+                  ttl: CACHE_TTL_SECONDS,
+                });
               } catch (err) {
                 console.error("Failed to cache AI response:", err);
               }
@@ -93,7 +98,7 @@ export default async function handler(request: Request) {
             console.error("Gemini Streaming Error:", e);
             controller.error(e);
           }
-        }
+        },
       });
 
       return new Response(readableStream, {
@@ -101,25 +106,28 @@ export default async function handler(request: Request) {
           "Content-Type": "text/plain; charset=utf-8",
           "Transfer-Encoding": "chunked",
           "Cache-Control": "no-cache",
-          "X-Cache": "MISS"
+          "X-Cache": "MISS",
         },
       });
     } else {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            stream: true,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: prompt },
+            ],
+          }),
         },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          stream: true,
-          messages: [
-            { role: "system", content: systemInstruction },
-            { role: "user", content: prompt }
-          ],
-        }),
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -137,12 +145,12 @@ export default async function handler(request: Request) {
       const transformStream = new TransformStream({
         transform(chunk, controller) {
           buffer += decoder.decode(chunk, { stream: true });
-          const lines = buffer.split('\n');
+          const lines = buffer.split("\n");
           // Keep the last line in the buffer as it might be incomplete
           buffer = lines.pop() || "";
 
           for (const line of lines) {
-            if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
+            if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
               try {
                 const data = JSON.parse(line.slice(6));
                 const content = data.choices?.[0]?.delta?.content || "";
@@ -157,7 +165,7 @@ export default async function handler(request: Request) {
           }
         },
         async flush(controller) {
-          if (buffer.startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
+          if (buffer.startsWith("data: ") && buffer.trim() !== "data: [DONE]") {
             try {
               const data = JSON.parse(buffer.slice(6));
               const content = data.choices?.[0]?.delta?.content || "";
@@ -167,16 +175,18 @@ export default async function handler(request: Request) {
               }
             } catch (e) {}
           }
-          
+
           // Cache the fully accumulated text
           if (fullContentAccumulator.length > 0) {
             try {
-              await cache.set(cacheKey, fullContentAccumulator, { ttl: CACHE_TTL_SECONDS });
+              await cache.set(cacheKey, fullContentAccumulator, {
+                ttl: CACHE_TTL_SECONDS,
+              });
             } catch (err) {
               console.error("Failed to cache AI response:", err);
             }
           }
-        }
+        },
       });
 
       return new Response(response.body!.pipeThrough(transformStream), {
@@ -184,11 +194,10 @@ export default async function handler(request: Request) {
           "Content-Type": "text/plain; charset=utf-8",
           "Transfer-Encoding": "chunked",
           "Cache-Control": "no-cache",
-          "X-Cache": "MISS"
+          "X-Cache": "MISS",
         },
       });
     }
-
   } catch (error) {
     console.error("Error in AI API:", error);
     return new Response("Đã xảy ra lỗi hệ thống khi gọi AI API.", {
