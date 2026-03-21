@@ -314,7 +314,7 @@ const selectSentenceAndSwitchTab = (item: any) => {
                         <span class="text-neutral-300 dark:text-neutral-600 font-sans text-sm mt-1.5 min-w-[1.5rem]">{{ Number(dIdx) + 1 }}.</span>
                         <span class="text-neutral-800 dark:text-neutral-200 leading-relaxed">{{ def.definition }}</span>
                       </div>
-                      <div v-if="def.example" class="text-neutral-500 dark:text-neutral-400 mt-3 ml-10 pl-4 border-l-[3px] border-neutral-200 dark:border-neutral-800 italic leading-relaxed text-base md:text-lg">
+                      <div v-if="def.example" class="text-neutral-500 dark:text-neutral-400 mt-3 ml-10 pl-4 border-l-[3px] border-neutral-200 dark:border-neutral-800  leading-relaxed text-base md:text-lg">
                         "{{ def.example }}"
                       </div>
                     </li>
@@ -346,7 +346,7 @@ const selectSentenceAndSwitchTab = (item: any) => {
               <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
                 <div class="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Full Sentence Translation
               </h4>
-              <p class="text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed italic">
+              <p class="text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
                 {{ sentenceTranslationEnVi }}
               </p>
             </div>
