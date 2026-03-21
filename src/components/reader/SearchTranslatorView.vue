@@ -49,14 +49,14 @@ const renderedAiExplanation = computed(() => {
 })
 
 const handleGlobalKeydown = (e: KeyboardEvent) => {
-  // Navigation shortcuts
-  if (e.key === 'Escape') {
-    // If we are looking at a translation and hit escape, maybe go back to results tab or focus input
-    e.preventDefault()
-    searchInputRef.value?.focus()
-    return
-  }
-
+// Navigation shortcuts
+if (e.key === 'Escape') {
+  // Clear search and focus input
+  e.preventDefault()
+  emit('update:searchQuery', '')
+  searchInputRef.value?.focus()
+  return
+}
   // Ctrl+Enter or Cmd+Enter to ask AI
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault()

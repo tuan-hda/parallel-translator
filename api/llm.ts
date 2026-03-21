@@ -62,7 +62,7 @@ export default async function handler(request: Request) {
     if (isGemini) {
       const ai = new GoogleGenAI({ apiKey });
       const responseStream = await ai.models.generateContentStream({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.1-flash-lite",
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
