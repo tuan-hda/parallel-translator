@@ -5,7 +5,7 @@ export const config = {
   runtime: "edge",
 };
 
-const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24 hours
+const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 const systemInstruction = `Bạn là một trợ lý dịch thuật. Hãy giải thích ngữ cảnh và ý nghĩa của các câu được cung cấp một cách chi tiết bằng tiếng Việt. Trả lời đi thẳng vào vấn đề, ngắn gọn, súc tích và tập trung giải quyết câu hỏi. Tuyệt đối KHÔNG sử dụng các câu giao tiếp thừa thãi (ví dụ: "Tuyệt vời", "Đó là một câu hỏi hay", "Dưới đây là...", "Tôi xin giải thích..."). Chỉ trả lời nội dung chính.`;
 
