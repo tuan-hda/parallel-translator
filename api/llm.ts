@@ -6,8 +6,228 @@ export const config = {
 };
 
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const PROVIDER_TIMEOUT_MS = 5_000; // 5s to establish connection before trying next provider
 
 const systemInstruction = `Bạn là một trợ lý dịch thuật. Hãy giải thích ngữ cảnh và ý nghĩa của các câu được cung cấp một cách chi tiết bằng tiếng Việt. Trả lời đi thẳng vào vấn đề, ngắn gọn, súc tích và tập trung giải quyết câu hỏi. Tuyệt đối KHÔNG sử dụng các câu giao tiếp thừa thãi (ví dụ: "Tuyệt vời", "Đó là một câu hỏi hay", "Dưới đây là...", "Tôi xin giải thích..."). Chỉ trả lời nội dung chính.`;
+
+// ---------------------------------------------------------------------------
+// Provider types
+// ---------------------------------------------------------------------------
+
+type ProviderName = "gemini" | "groq";
+
+interface Provider {
+  name: ProviderName;
+  /** Returns a ReadableStream of text chunks, or throws on transient error */
+  call: (prompt: string) => Promise<ReadableStream<Uint8Array>>;
+}
+
+/** Status codes that warrant trying the next provider */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+// ---------------------------------------------------------------------------
+// Helper: race a promise against a timeout
+// ---------------------------------------------------------------------------
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Provider implementations
+// ---------------------------------------------------------------------------
+
+function makeGeminiProvider(apiKey: string): Provider {
+  const encoder = new TextEncoder();
+  return {
+    name: "gemini",
+    async call(prompt: string) {
+      const ai = new GoogleGenAI({ apiKey });
+
+      // withTimeout wraps the initial stream creation (connection phase)
+      const responseStream = await withTimeout(
+        ai.models.generateContentStream({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: prompt,
+          config: { systemInstruction, temperature: 0.3 },
+        }),
+        PROVIDER_TIMEOUT_MS,
+      );
+
+      return new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of responseStream) {
+              if (chunk.text) {
+                controller.enqueue(encoder.encode(chunk.text));
+              }
+            }
+            controller.close();
+          } catch (e) {
+            controller.error(e);
+          }
+        },
+      });
+    },
+  };
+}
+
+function makeGroqProvider(apiKey: string): Provider {
+  const encoder = new TextEncoder();
+  return {
+    name: "groq",
+    async call(prompt: string) {
+      const response = await withTimeout(
+        fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            stream: true,
+            temperature: 0.3,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: prompt },
+            ],
+          }),
+        }),
+        PROVIDER_TIMEOUT_MS,
+      );
+
+      if (!response.ok) {
+        if (RETRYABLE_STATUSES.has(response.status)) {
+          throw new Error(`Groq ${response.status}`);
+        }
+        throw new Error(`Groq non-retryable ${response.status}`);
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      return new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const reader = response.body!.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+
+              for (const line of lines) {
+                if (
+                  line.startsWith("data: ") &&
+                  line.trim() !== "data: [DONE]"
+                ) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    const content = data.choices?.[0]?.delta?.content ?? "";
+                    if (content) controller.enqueue(encoder.encode(content));
+                  } catch {
+                    // skip malformed chunks
+                  }
+                }
+              }
+            }
+            controller.close();
+          } catch (e) {
+            controller.error(e);
+          }
+        },
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Build provider list from env vars (in priority order)
+// ---------------------------------------------------------------------------
+
+function buildProviders(): Provider[] {
+  const providers: Provider[] = [];
+
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) providers.push(makeGeminiProvider(geminiKey));
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) providers.push(makeGroqProvider(groqKey));
+
+  return providers;
+}
+
+// ---------------------------------------------------------------------------
+// Try providers in order, return first successful stream
+// ---------------------------------------------------------------------------
+
+async function tryProviders(
+  providers: Provider[],
+  prompt: string,
+): Promise<{ stream: ReadableStream<Uint8Array>; provider: ProviderName }> {
+  const errors: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      const stream = await provider.call(prompt);
+      return { stream, provider: provider.name };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[llm] Provider "${provider.name}" failed: ${msg}`);
+      errors.push(`${provider.name}: ${msg}`);
+    }
+  }
+
+  throw new Error(`All providers failed — ${errors.join(" | ")}`);
+}
+
+// ---------------------------------------------------------------------------
+// Cache-aware stream wrapper: accumulates text and caches after completion
+// ---------------------------------------------------------------------------
+
+function wrapWithCache(
+  stream: ReadableStream<Uint8Array>,
+  cache: ReturnType<typeof getCache>,
+  cacheKey: string,
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  let accumulated = "";
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          controller.enqueue(value);
+        }
+        controller.close();
+
+        if (accumulated.length > 0) {
+          cache
+            .set(cacheKey, accumulated, { ttl: CACHE_TTL_SECONDS })
+            .catch((err) => console.error("Cache write failed:", err));
+        }
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
 
 export default async function handler(request: Request) {
   if (request.method !== "POST") {
@@ -24,18 +244,15 @@ export default async function handler(request: Request) {
     if (!prompt) {
       return new Response(
         JSON.stringify({ error: "Missing prompt in request body" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
+    const providers = buildProviders();
 
-    if (!apiKey) {
+    if (providers.length === 0) {
       return new Response(
-        "Chưa cấu hình API Key cho AI (vui lòng thêm OPENAI_API_KEY hoặc GEMINI_API_KEY vào .env)",
+        "Chưa cấu hình API Key cho AI (vui lòng thêm GEMINI_API_KEY hoặc GROQ_API_KEY vào .env)",
         {
           status: 200,
           headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -43,11 +260,15 @@ export default async function handler(request: Request) {
       );
     }
 
-    // Initialize Vercel Runtime Cache API
+    // Check cache first
     const cache = getCache();
-    const cacheKey = `ai-llm:${prompt}`;
+    // Include a fingerprint of systemInstruction so cache is busted when it changes
+    const sysHash =
+      systemInstruction.length.toString(36) +
+      systemInstruction.charCodeAt(0).toString(36) +
+      systemInstruction.charCodeAt(systemInstruction.length - 1).toString(36);
+    const cacheKey = `ai-llm:${sysHash}:${prompt}`;
 
-    // Return cached response if available
     const cached = await cache.get(cacheKey);
     if (cached) {
       return new Response(cached, {
@@ -59,145 +280,21 @@ export default async function handler(request: Request) {
       });
     }
 
-    const isGemini = apiKey.startsWith("AIza");
-    const encoder = new TextEncoder();
+    // Try providers with fallback
+    const { stream, provider } = await tryProviders(providers, prompt);
 
-    if (isGemini) {
-      const ai = new GoogleGenAI({ apiKey });
-      const responseStream = await ai.models.generateContentStream({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.3,
-        },
-      });
+    // Wrap stream to accumulate + cache response after completion
+    const cachedStream = wrapWithCache(stream, cache, cacheKey);
 
-      const readableStream = new ReadableStream({
-        async start(controller) {
-          let fullContentAccumulator = "";
-          try {
-            for await (const chunk of responseStream) {
-              if (chunk.text) {
-                fullContentAccumulator += chunk.text;
-                controller.enqueue(encoder.encode(chunk.text));
-              }
-            }
-
-            if (fullContentAccumulator.length > 0) {
-              try {
-                await cache.set(cacheKey, fullContentAccumulator, {
-                  ttl: CACHE_TTL_SECONDS,
-                });
-              } catch (err) {
-                console.error("Failed to cache AI response:", err);
-              }
-            }
-            controller.close();
-          } catch (e) {
-            console.error("Gemini Streaming Error:", e);
-            controller.error(e);
-          }
-        },
-      });
-
-      return new Response(readableStream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Transfer-Encoding": "chunked",
-          "Cache-Control": "no-cache",
-          "X-Cache": "MISS",
-        },
-      });
-    } else {
-      const response = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            stream: true,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: prompt },
-            ],
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI API error:", errorText);
-        return new Response("Đã xảy ra lỗi khi gọi AI API.", {
-          status: 500,
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
-        });
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullContentAccumulator = "";
-
-      const transformStream = new TransformStream({
-        transform(chunk, controller) {
-          buffer += decoder.decode(chunk, { stream: true });
-          const lines = buffer.split("\n");
-          // Keep the last line in the buffer as it might be incomplete
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
-              try {
-                const data = JSON.parse(line.slice(6));
-                const content = data.choices?.[0]?.delta?.content || "";
-                if (content) {
-                  fullContentAccumulator += content;
-                  controller.enqueue(encoder.encode(content));
-                }
-              } catch (e) {
-                // Ignore parse errors on incomplete chunks
-              }
-            }
-          }
-        },
-        async flush(controller) {
-          if (buffer.startsWith("data: ") && buffer.trim() !== "data: [DONE]") {
-            try {
-              const data = JSON.parse(buffer.slice(6));
-              const content = data.choices?.[0]?.delta?.content || "";
-              if (content) {
-                fullContentAccumulator += content;
-                controller.enqueue(encoder.encode(content));
-              }
-            } catch (e) {}
-          }
-
-          // Cache the fully accumulated text
-          if (fullContentAccumulator.length > 0) {
-            try {
-              await cache.set(cacheKey, fullContentAccumulator, {
-                ttl: CACHE_TTL_SECONDS,
-              });
-            } catch (err) {
-              console.error("Failed to cache AI response:", err);
-            }
-          }
-        },
-      });
-
-      return new Response(response.body!.pipeThrough(transformStream), {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Transfer-Encoding": "chunked",
-          "Cache-Control": "no-cache",
-          "X-Cache": "MISS",
-        },
-      });
-    }
+    return new Response(cachedStream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache",
+        "X-Cache": "MISS",
+        "X-Provider": provider,
+      },
+    });
   } catch (error) {
     console.error("Error in AI API:", error);
     return new Response("Đã xảy ra lỗi hệ thống khi gọi AI API.", {

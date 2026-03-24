@@ -60,6 +60,16 @@ parallel-translator/
 
 - **Prefer External Tools:** ALWAYS prefer to use external, existing tools and packages from the marketplace or npm rather than building functionality from scratch (e.g., use an existing dropzone or PDF parser).
 
+## API Models — DO NOT CHANGE
+
+> **IMPORTANT:** The model names below are fixed by the project owner. Never change them unless explicitly instructed.
+
+| Provider | Model ID |
+| -------- | -------- |
+| Google Gemini | `gemini-3.1-flash-lite-preview` |
+| Groq | `llama-3.3-70b-versatile` |
+
+
 ## Development Workflow
 
 ```bash
