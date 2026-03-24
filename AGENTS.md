@@ -67,7 +67,7 @@ parallel-translator/
 | Provider | Model ID |
 | -------- | -------- |
 | Google Gemini | `gemini-3.1-flash-lite-preview` |
-| Groq | `llama-3.3-70b-versatile` |
+| Groq | `openai/gpt-oss-120b` |
 
 
 ## Development Workflow

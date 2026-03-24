@@ -1,5 +1,6 @@
 import { getCache } from "@vercel/functions";
 import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 export const config = {
   runtime: "edge",
@@ -82,62 +83,28 @@ function makeGroqProvider(apiKey: string): Provider {
   return {
     name: "groq",
     async call(prompt: string) {
-      const response = await withTimeout(
-        fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            stream: true,
-            temperature: 0.3,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: prompt },
-            ],
-          }),
+      const groq = new Groq({ apiKey });
+
+      // withTimeout covers the initial connection/handshake phase
+      const stream = await withTimeout(
+        groq.chat.completions.create({
+          model: "openai/gpt-oss-120b",
+          stream: true,
+          temperature: 0.3,
+          messages: [
+            { role: "user", content: systemInstruction },
+            { role: "user", content: prompt },
+          ],
         }),
         PROVIDER_TIMEOUT_MS,
       );
 
-      if (!response.ok) {
-        if (RETRYABLE_STATUSES.has(response.status)) {
-          throw new Error(`Groq ${response.status}`);
-        }
-        throw new Error(`Groq non-retryable ${response.status}`);
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
       return new ReadableStream<Uint8Array>({
         async start(controller) {
-          const reader = response.body!.getReader();
           try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() ?? "";
-
-              for (const line of lines) {
-                if (
-                  line.startsWith("data: ") &&
-                  line.trim() !== "data: [DONE]"
-                ) {
-                  try {
-                    const data = JSON.parse(line.slice(6));
-                    const content = data.choices?.[0]?.delta?.content ?? "";
-                    if (content) controller.enqueue(encoder.encode(content));
-                  } catch {
-                    // skip malformed chunks
-                  }
-                }
-              }
+            for await (const chunk of stream) {
+              const content = chunk.choices[0]?.delta?.content ?? "";
+              if (content) controller.enqueue(encoder.encode(content));
             }
             controller.close();
           } catch (e) {
