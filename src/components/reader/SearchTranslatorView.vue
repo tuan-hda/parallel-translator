@@ -124,7 +124,7 @@ const askAILLM = async () => {
   if (!props.selectedSentence) return
   
   const context = props.selectedSentence.contextText || props.selectedSentence.text
-  const query = `Ngữ cảnh: sách ${props.fileName || 'Không rõ'}. Giải thích câu sau đây sang tiếng Việt: ${context}`
+  const query = `Ngữ cảnh: sách ${props.fileName || 'Không rõ'}. Giải thích câu sau đây sang tiếng Việt. Hãy giải thích thật chi tiết theo từng câu, và nếu cần thì tách tiếp theo từng cụm từ để làm rõ nghĩa, cách hiểu theo ngữ cảnh, và các điểm ngữ pháp/cách diễn đạt quan trọng: ${context}`
   
   isAskingAI.value = true
   isStreamingAI.value = true
@@ -278,6 +278,35 @@ const selectSentenceAndSwitchTab = (item: any) => {
             <FileText class="w-4 h-4" /> Original Context
           </h3>
           <p class="text-xl md:text-2xl text-neutral-900 dark:text-neutral-100 font-serif leading-relaxed" v-html="highlightText(selectedSentence.contextText || selectedSentence.text, searchQuery)"></p>
+
+          <div class="flex justify-end mt-6">
+            <button 
+              @click="askAILLM"
+              class="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-sm"
+              :disabled="isAskingAI || isStreamingAI"
+            >
+              <span v-if="isAskingAI || isStreamingAI" class="animate-spin text-lg">⚙</span>
+              <span v-else>✨</span>
+              Ask AI to Explain
+            </button>
+          </div>
+
+          <div id="ai-explanation-box" v-if="aiExplanation || isAskingAI" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm mt-4">
+            <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
+              <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div> AI Full Sentence Explanation
+            </h4>
+            <div v-if="isAskingAI" class="flex flex-col gap-3">
+              <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-full animate-pulse"></div>
+              <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
+              <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-4/6 animate-pulse"></div>
+            </div>
+            <div 
+              v-else 
+              class="prose prose-neutral dark:prose-invert prose-lg max-w-none text-neutral-800 dark:text-neutral-200 font-serif leading-relaxed"
+              v-html="renderedAiExplanation"
+            >
+            </div>
+          </div>
         </div>
         
         <div class="w-full h-px bg-neutral-200 dark:bg-neutral-800"></div>
@@ -349,36 +378,6 @@ const selectSentenceAndSwitchTab = (item: any) => {
               <p class="text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 font-serif leading-relaxed">
                 {{ sentenceTranslationEnVi }}
               </p>
-            </div>
-
-            <!-- AI Explanation Section -->
-            <div v-if="selectedSentence" class="flex justify-end mt-4">
-              <button 
-                @click="askAILLM"
-                class="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-sm"
-                :disabled="isAskingAI || isStreamingAI"
-              >
-                <span v-if="isAskingAI || isStreamingAI" class="animate-spin text-lg">⚙</span>
-                <span v-else>✨</span>
-                Ask AI to Explain
-              </button>
-            </div>
-            
-            <div id="ai-explanation-box" v-if="aiExplanation || isAskingAI" class="bg-white dark:bg-neutral-800/40 p-6 rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 shadow-sm mt-4">
-              <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-4 flex items-center gap-2">
-                <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div> AI Explanation
-              </h4>
-              <div v-if="isAskingAI" class="flex flex-col gap-3">
-                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-full animate-pulse"></div>
-                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6 animate-pulse"></div>
-                <div class="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-4/6 animate-pulse"></div>
-              </div>
-              <div 
-                v-else 
-                class="prose prose-neutral dark:prose-invert prose-lg max-w-none text-neutral-800 dark:text-neutral-200 font-serif leading-relaxed"
-                v-html="renderedAiExplanation"
-              >
-              </div>
             </div>
           </div>
         </div>
