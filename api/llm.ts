@@ -53,7 +53,7 @@ function makeGeminiProvider(apiKey: string): Provider {
       // withTimeout wraps the initial stream creation (connection phase)
       const responseStream = await withTimeout(
         ai.models.generateContentStream({
-          model: "gemini-3.1-flash-lite-preview",
+          model: "gemma-4-26b-a4b-it",
           contents: prompt,
           config: { systemInstruction, temperature: 0.3 },
         }),
